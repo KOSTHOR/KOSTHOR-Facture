@@ -193,7 +193,10 @@
   #pdfOverlay{display:none; position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.55); align-items:center; justify-content:center; padding:20px;}
   #pdfOverlay .pdf-box{background:var(--paper); border-radius:6px; padding:22px; width:100%; max-width:360px; display:flex; flex-direction:column; gap:10px; text-align:center;}
   #pdfOverlay .pdf-title{font-family:'Oswald',sans-serif; font-size:18px; font-weight:600; text-transform:uppercase; letter-spacing:.03em;}
-  #pdfOverlay .pdf-name{font-size:12px; color:var(--muted); word-break:break-word; margin-bottom:6px;}
+  #pdfOverlay .pdf-lbl{font-size:12px; color:var(--muted); text-align:left;}
+  #pdfOverlay .pdf-namerow{display:flex; align-items:center; gap:6px; margin-bottom:6px;}
+  #pdfOverlay .pdf-namerow input{flex:1; min-width:0; font-family:'Inter',sans-serif; font-size:16px; padding:9px 10px; border:1px solid var(--line); border-radius:3px; background:#fff;}
+  #pdfOverlay .pdf-namerow span{font-size:14px; color:var(--muted);}
   #pdfOverlay .btn{justify-content:center; padding:12px 14px; font-size:14px;}
   .btn:disabled{opacity:.6;}
   @page{ size:A4; margin:12mm 11mm; }
@@ -780,9 +783,7 @@ async function buildPdf(){
 
 function fileNameFor(inv){
   const first = (inv.client || '').split('\n')[0].trim();
-  let n = 'Facture ' + (inv.num || '') + (first ? ' - ' + first : '');
-  n = n.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
-  return n + '.pdf';
+  return first || ('Facture ' + (inv.num || ''));
 }
 
 // Fenêtre de partage
@@ -790,7 +791,8 @@ const ov = document.createElement('div');
 ov.id = 'pdfOverlay';
 ov.innerHTML = `<div class="pdf-box">
   <div class="pdf-title">📄 PDF prêt</div>
-  <div class="pdf-name" id="pdfName"></div>
+  <label class="pdf-lbl" for="pdfNameInput">Nom du fichier</label>
+  <div class="pdf-namerow"><input id="pdfNameInput" type="text" autocomplete="off"><span>.pdf</span></div>
   <button class="btn primary" id="pdfShare">Enregistrer / Partager le PDF</button>
   <button class="btn" id="pdfOpen">Voir le PDF</button>
   <button class="btn ghost" id="pdfClose">Fermer</button>
@@ -807,15 +809,23 @@ function download(file){
   a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+function finalFile(){
+  let n = document.getElementById('pdfNameInput').value.replace(/\.pdf$/i, '');
+  n = n.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'Facture';
+  return new File([currentBytes], n + '.pdf', { type: 'application/pdf' });
+}
+let currentBytes = null;
 document.getElementById('pdfShare').addEventListener('click', async () => {
-  if (!current) return;
+  if (!currentBytes) return;
+  current = finalFile();
   if (navigator.canShare && navigator.canShare({ files: [current] })) {
-    try { await navigator.share({ files: [current], title: current.name }); close(); }
+    try { await navigator.share({ files: [current] }); close(); }
     catch (e) { if (e && e.name !== 'AbortError') download(current); }
   } else { download(current); close(); }
 });
 document.getElementById('pdfOpen').addEventListener('click', () => {
-  if (!current) return;
+  if (!currentBytes) return;
+  current = finalFile();
   const url = URL.createObjectURL(current);
   const w = window.open(url, '_blank');
   if (!w) location.href = url;
@@ -827,8 +837,8 @@ document.getElementById('btnPrint').addEventListener('click', async () => {
   btn.textContent = '⏳ Création…'; btn.disabled = true;
   try {
     const { bytes, inv } = await buildPdf();
-    current = new File([bytes], fileNameFor(inv), { type: 'application/pdf' });
-    document.getElementById('pdfName').textContent = current.name;
+    currentBytes = bytes;
+    document.getElementById('pdfNameInput').value = fileNameFor(inv);
     ov.style.display = 'flex';
   } catch (e) {
     console.error(e);
